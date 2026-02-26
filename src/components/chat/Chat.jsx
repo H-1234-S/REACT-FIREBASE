@@ -10,8 +10,11 @@ import {
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { useChatStore } from "../../lib/chatStore";
-import { format } from "timeago.js";
 import useUserStore from "../../lib/userStore";
+import { format, register } from "timeago.js";
+import zh_CN from "timeago.js/lib/lang/zh_CN"; // 导入中文包
+
+register("zh_CN", zh_CN); // 注册中文语言
 
 const Chat = () => {
   const [chat, setChat] = useState()
@@ -61,7 +64,7 @@ const Chat = () => {
   // 发送一条消息（包含文字和可选图片）并更新双方的聊天列表状态。
   const handleSend = async () => {
     if (text === "") return;
-
+    if (isCurrentUserBlocked || isReceiverBlocked) return;
     let imgUrl = null;
 
     try {
@@ -80,8 +83,9 @@ const Chat = () => {
       });
       // 发送完消息后，对话双方的左侧联系人列表需要显示“最新一条消息”和“更新时间”。
       const userIDs = [currentUser.id, user.id];
-
-      userIDs.forEach(async (id) => {
+      // 并发执行
+      await Promise.all(userIDs.map(async (id) => {
+        // ... 这里的逻辑会同时为两个人更新
         const userChatsRef = doc(db, "userchats", id);// 找到对应文档
         const userChatsSnapshot = await getDoc(userChatsRef);// 读取对应文档的数据
 
@@ -102,7 +106,8 @@ const Chat = () => {
             chats: userChatsData.chats,
           });
         }
-      });
+      }));
+
     } catch (err) {
       console.log(err);
     } finally {
@@ -143,7 +148,7 @@ const Chat = () => {
                   message.img && <img src={message.img} alt="" />
                 }
                 <p>{message.text}</p>
-                <span>刚刚</span>
+                <span>{format(message.createdAt.toDate(), "zh_CN")}</span>
               </div>
             </div>
           ))
