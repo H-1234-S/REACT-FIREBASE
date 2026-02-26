@@ -1,72 +1,49 @@
 import { useEffect, useState } from "react";
+import useUserStore from '../../../lib/userStore'
 import "./chatList.css";
-import AddUser from "./addUser/addUser";
-import { useUserStore } from "../../../lib/userStore";
-import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
+import AddUser from "./addUser/AddUser";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
 import { useChatStore } from "../../../lib/chatStore";
-
 const ChatList = () => {
-  const [chats, setChats] = useState([]);
-  const [addMode, setAddMode] = useState(false);
-  const [input, setInput] = useState("");
-
-  const { currentUser } = useUserStore();
-  const { chatId, changeChat } = useChatStore();
-
+  const { currentUser } = useUserStore()
+  const [addMode, setAddMode] = useState(false)
+  const [chats, setChats] = useState([])
+  const { changeChat } = useChatStore()
   useEffect(() => {
     const unSub = onSnapshot(
       doc(db, "userchats", currentUser.id),
       async (res) => {
-        const items = res.data().chats;
-
+        // 获取消息列表
+        const items = res.data().chats
+        // 遍历聊天列表，根据 ID 去用户表“抓取”每个人的头像、昵称等完整信息，并组合成一个最终的对象。
+        // chats 存什么？
         const promises = items.map(async (item) => {
+          // 向users集合中请求id为item.receiverId对应的文档
           const userDocRef = doc(db, "users", item.receiverId);
+          // 获取到对应文档数据
           const userDocSnap = await getDoc(userDocRef);
 
           const user = userDocSnap.data();
 
           return { ...item, user };
         });
-
+        // Promise.all并发请求
+        // promise变量中存的不是数据，而是逻辑任务
         const chatData = await Promise.all(promises);
-
+        // 按照时间排序
         setChats(chatData.sort((a, b) => b.updatedAt - a.updatedAt));
-      }
-    );
+
+      })
 
     return () => {
-      unSub();
-    };
-  }, [currentUser.id]);
-
-  const handleSelect = async (chat) => {
-    const userChats = chats.map((item) => {
-      const { user, ...rest } = item;
-      return rest;
-    });
-
-    const chatIndex = userChats.findIndex(
-      (item) => item.chatId === chat.chatId
-    );
-
-    userChats[chatIndex].isSeen = true;
-
-    const userChatsRef = doc(db, "userchats", currentUser.id);
-
-    try {
-      await updateDoc(userChatsRef, {
-        chats: userChats,
-      });
-      changeChat(chat.chatId, chat.user);
-    } catch (err) {
-      console.log(err);
+      unSub()
     }
-  };
+  }, [currentUser.id])
 
-  const filteredChats = chats.filter((c) =>
-    c.user.username.toLowerCase().includes(input.toLowerCase())
-  );
+  const handleSelect = async ({chatId,user}) => {
+    changeChat(chatId,user)
+  }
 
   return (
     <div className="chatList">
@@ -75,8 +52,7 @@ const ChatList = () => {
           <img src="./search.png" alt="" />
           <input
             type="text"
-            placeholder="Search"
-            onChange={(e) => setInput(e.target.value)}
+            placeholder="搜索"
           />
         </div>
         <img
@@ -86,34 +62,21 @@ const ChatList = () => {
           onClick={() => setAddMode((prev) => !prev)}
         />
       </div>
-      {filteredChats.map((chat) => (
-        <div
-          className="item"
-          key={chat.chatId}
-          onClick={() => handleSelect(chat)}
-          style={{
-            backgroundColor: chat?.isSeen ? "transparent" : "#5183fe",
-          }}
-        >
-          <img
-            src={
-              chat.user.blocked.includes(currentUser.id)
-                ? "./avatar.png"
-                : chat.user.avatar || "./avatar.png"
-            }
-            alt=""
-          />
-          <div className="texts">
-            <span>
-              {chat.user.blocked.includes(currentUser.id)
-                ? "User"
-                : chat.user.username}
-            </span>
-            <p>{chat.lastMessage}</p>
+      {
+        chats.map((chat) => (
+          <div className="item" key={chat.chatId} onClick={() => handleSelect(chat)}>
+            <img
+              src="./avatar.png"
+              alt=""
+            />
+            <div className="texts">
+              <span>{chat.user.username}</span>
+              <p>{chat.lastMessage}</p>
+            </div>
           </div>
-        </div>
-      ))}
-
+        ))
+      }
+      
       {addMode && <AddUser />}
     </div>
   );
